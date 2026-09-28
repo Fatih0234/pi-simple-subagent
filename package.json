@@ -24,9 +24,17 @@
   "homepage": "https://github.com/Fatih0234/pi-simple-subagent#readme",
   "bugs": "https://github.com/Fatih0234/pi-simple-subagent/issues",
   "pi": {
-    "extensions": ["./index.ts"]
+    "extensions": [
+      "./index.ts"
+    ]
   },
-  "files": ["index.ts", "model.ts", "runner.ts", "README.md", "LICENSE"],
+  "files": [
+    "index.ts",
+    "model.ts",
+    "runner.ts",
+    "README.md",
+    "LICENSE"
+  ],
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
     "typebox": "*"
@@ -34,5 +42,13 @@
   "scripts": {
     "test": "node --test test/*.test.ts",
     "e2e": "node e2e/run.mjs"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    },
+    "typebox": {
+      "optional": true
+    }
   }
 }
