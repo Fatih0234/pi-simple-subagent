@@ -18,3 +18,7 @@ Append-only. Newest at the bottom. Format: date — decision — why.
 - 2026-09-28 — Default concurrency cap = 8.
 - 2026-09-28 — Results do NOT wake an idle main agent (no extra paid turn). Pending (see STATUS):
   exact delivery while busy vs idle.
+- 2026-09-28 — Children run as separate `pi` processes (isolation, simple kill). Measure boot time in the prototype.
+- 2026-09-28 — Delivery: main agent busy → slip result into the current run (no extra turn).
+  Main agent idle → don't wake it; hold for the user's next message + show a UI notice.
+  `wait_agents` for when the main agent needs results now.
