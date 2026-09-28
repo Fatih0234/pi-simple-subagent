@@ -170,10 +170,32 @@ export default function (pi: ExtensionAPI) {
 		}
 	};
 
+	// Safety net: a result buffered in the gap after the run's last turn_end/agent_settled
+	// but before pi reports idle would otherwise wait for the *next* run. Poll until idle.
+	let idleWatch: ReturnType<typeof setInterval> | undefined;
+	const stopIdleWatch = () => {
+		if (idleWatch) clearInterval(idleWatch);
+		idleWatch = undefined;
+	};
+	const watchForIdle = () => {
+		if (idleWatch) return;
+		idleWatch = setInterval(() => {
+			if (!pendingSteer.length) stopIdleWatch();
+			else if (ctx?.isIdle()) {
+				stopIdleWatch();
+				flush("nextTurn");
+			}
+		}, 500);
+		idleWatch.unref?.();
+	};
+
 	const deliver = (r: Run) => {
 		if (r.delivered) return;
 		if (ctx?.isIdle() ?? true) send([r], "nextTurn");
-		else if (!pendingSteer.includes(r)) pendingSteer.push(r);
+		else if (!pendingSteer.includes(r)) {
+			pendingSteer.push(r);
+			watchForIdle();
+		}
 	};
 
 	const flush = (deliverAs: "steer" | "nextTurn") => {
@@ -264,20 +286,34 @@ export default function (pi: ExtensionAPI) {
 				start: () => {
 					run.status = "running";
 					run.startedAt = Date.now();
-					run.child = runChild({
-						task: params.task,
-						cwd: c.cwd,
-						model: choice.model,
-						thinking: choice.thinking,
-						tools: def?.tools,
-						systemPrompt: [CHILD_PREAMBLE, def?.prompt ?? ""].join("\n\n").trim(),
-					});
-					run.child.done.then((result) => {
-						if (run.status !== "running") return; // stopped meanwhile
-						run.result = result;
-						run.status = result.ok ? "done" : "failed";
+					const fail = (msg: string) => {
+						run.result = { ok: false, output: msg, turns: 0, cost: 0, input: 0, output_tokens: 0, stderr: "" };
+						run.status = "failed";
 						onFinish(run);
-					});
+					};
+					try {
+						run.child = runChild({
+							task: params.task,
+							cwd: c.cwd,
+							model: choice.model,
+							thinking: choice.thinking,
+							tools: def?.tools,
+							systemPrompt: [CHILD_PREAMBLE, def?.prompt ?? ""].join("\n\n").trim(),
+						});
+					} catch (e) {
+						// defer so a failure inside pump() cannot re-enter pump() mid-loop
+						queueMicrotask(() => fail(`could not start subagent: ${e instanceof Error ? e.message : e}`));
+						return;
+					}
+					run.child.done.then(
+						(result) => {
+							if (run.status !== "running") return; // stopped meanwhile
+							run.result = result;
+							run.status = result.ok ? "done" : "failed";
+							onFinish(run);
+						},
+						(e) => run.status === "running" && fail(`subagent crashed: ${e}`),
+					);
 				},
 			};
 			runs.set(id, run);
@@ -323,7 +359,9 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			targets.forEach((r) => r.waiters++);
+			let ended = false; // no progress updates after this tool call has returned or thrown
 			const progress = () =>
+				!ended &&
 				onUpdate?.({
 					content: [{ type: "text", text: `${targets.filter(isFinished).length}/${targets.length} finished` }],
 					details: undefined,
@@ -335,9 +373,12 @@ export default function (pi: ExtensionAPI) {
 			try {
 				await new Promise<void>((resolve) => {
 					Promise.all(targets.map((r) => r.finished)).then(() => resolve());
-					signal?.addEventListener("abort", () => ((aborted = true), resolve()), { once: true });
+					const onAbort = () => ((aborted = true), resolve());
+					if (signal?.aborted) onAbort();
+					else signal?.addEventListener("abort", onAbort, { once: true });
 				});
 			} finally {
+				ended = true;
 				targets.forEach((r) => r.waiters--);
 			}
 
@@ -374,6 +415,7 @@ export default function (pi: ExtensionAPI) {
 		}
 		runs.clear();
 		pendingSteer = [];
+		stopIdleWatch();
 		ctx = undefined;
 	});
 }

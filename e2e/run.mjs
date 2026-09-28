@@ -14,6 +14,10 @@ import * as path from "node:path";
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const model = process.argv[2] ?? `${process.env.PI_PROVIDER}/${process.env.PI_MODEL}`;
 if (model.includes("undefined")) throw new Error("pass provider/model");
+// Expected child model: settings.json simpleSubagent.model if set, else the parent's model.
+const settingsFile = path.join(process.env.HOME, ".pi", "agent", "settings.json");
+const configured = JSON.parse(fs.readFileSync(settingsFile, "utf-8")).simpleSubagent?.model;
+const childModel = configured ?? model;
 const artifacts = path.join(root, "e2e", "artifacts");
 fs.mkdirSync(artifacts, { recursive: true });
 const logFile = path.join(artifacts, `run-${new Date().toISOString().replace(/[:.]/g, "-")}.jsonl`);
@@ -72,7 +76,7 @@ function check(name, ok, info = "") {
 }
 
 try {
-	console.log(`parent model: ${model}\nlog: ${path.relative(root, logFile)}\n`);
+	console.log(`parent model: ${model}\nexpected child model: ${childModel}\nlog: ${path.relative(root, logFile)}\n`);
 
 	// 1) busy -> results slip into the running turn; parallel; no waiting tool used
 	await prompt(
@@ -93,7 +97,7 @@ try {
 	check("1 busy: one model turn after bash (no per-result turns)", turnsAfter === 1, `${turnsAfter} turns`);
 	check("1 busy: answer has ALPHA and BRAVO", /ALPHA/.test(a1) && /BRAVO/.test(a1), a1.slice(0, 120));
 	const headers = combined.split("\n").filter((l) => /^\[agent-\d+\]/.test(l));
-	check("1 model inherited from parent session", headers.length === 2 && headers.every((h) => h.includes(`model ${model}`)), headers[0]);
+	check(`1 child model = ${configured ? "settings" : "parent session"} model`, headers.length === 2 && headers.every((h) => h.includes(`model ${childModel}`)), headers[0]);
 
 	// 2) idle -> result is held (no new turn), then shows up with the next user message
 	await prompt(

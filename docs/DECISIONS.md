@@ -27,3 +27,6 @@ Append-only. Newest at the bottom. Format: date — decision — why.
   (seen in E2E run 1).
 - 2026-09-28 — Configured models must be "provider/id"; fuzzy names are rejected so pi can't pattern-match
   them to an unintended model.
+- 2026-09-28 — Fixed three delivery bugs found by a live `reviewer` subagent: idle-gap results stuck in the
+  steer buffer (now polled until idle), a failure at child start left runs stuck at "running", and stale
+  `wait_agents` progress updates after an abort.
