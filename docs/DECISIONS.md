@@ -12,3 +12,9 @@ Append-only. Newest at the bottom. Format: date — decision — why.
 - 2026-09-28 — Worktrees, terminal panes, workflows/chains and persistent sessions are out of scope.
   Why: the user handles isolation separately; simplicity is the main requirement.
 - 2026-09-28 — Background agents are in scope and feasible through `pi.sendMessage(..., { triggerTurn, deliverAs })`.
+- 2026-09-28 — Tool surface = Option B: `spawn_agent({ task, agent? })` (always background, returns id)
+  + `wait_agents({ ids? })`. Why: one mental model ("everything runs in background"), parallel for free.
+- 2026-09-28 — `agent` is optional. Omitted → general-purpose child with the main agent's tools.
+- 2026-09-28 — Default concurrency cap = 8.
+- 2026-09-28 — Results do NOT wake an idle main agent (no extra paid turn). Pending (see STATUS):
+  exact delivery while busy vs idle.

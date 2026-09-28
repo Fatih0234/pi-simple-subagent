@@ -10,7 +10,8 @@ _Last updated: 2026-09-28_
   Workaround until replaced: **never pass `model`** to that tool.
 
 ## Next steps
-1. Settle the open questions in `docs/DESIGN.md` with the user.
+1. Settle remaining open questions: process model (subprocess vs in-process) and exact delivery
+   rule (steer-while-busy? notify user when idle?). Tool surface, optional agent, cap=8 are decided.
 2. Spike: minimal subprocess child + `ctx.model` inheritance + background delivery via `sendMessage`;
    measure child startup time.
 3. E2E check inside a real pi session: spawn 3 background agents, keep working, confirm all
