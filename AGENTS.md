@@ -1,6 +1,6 @@
 # Agent instructions
 
-Read `README.md` (why), `docs/STATUS.md` (where we are), `docs/DESIGN.md` (what) before working.
+Read `README.md` (what it is), `docs/MOTIVATION.md` (why), `docs/STATUS.md` (where we are), `docs/DESIGN.md` (what) before working.
 
 - Simplicity is the product. Before adding a parameter, option, file or mode, ask whether the
   goal holds without it. Default answer: don't add it.

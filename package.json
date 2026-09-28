@@ -1,11 +1,38 @@
 {
   "name": "pi-simple-subagent",
   "version": "0.1.0",
-  "description": "Simple background subagents for the pi coding agent: spawn_agent + wait_agents. The LLM never picks the model.",
+  "description": "Background subagents for the pi coding agent: spawn_agent + wait_agents. Results arrive automatically, no polling. The LLM never picks the model.",
   "type": "module",
-  "keywords": ["pi-package", "pi", "subagent"],
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-extension",
+    "pi-coding-agent",
+    "subagent",
+    "subagents",
+    "background-agents",
+    "parallel",
+    "coding-agent",
+    "ai-agents"
+  ],
+  "author": "Fatih Karahan",
   "license": "MIT",
-  "pi": { "extensions": ["./index.ts"] },
-  "files": ["index.ts", "model.ts", "runner.ts", "README.md"],
-  "scripts": { "test": "node --test test/*.test.ts" }
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Fatih0234/pi-simple-subagent.git"
+  },
+  "homepage": "https://github.com/Fatih0234/pi-simple-subagent#readme",
+  "bugs": "https://github.com/Fatih0234/pi-simple-subagent/issues",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "files": ["index.ts", "model.ts", "runner.ts", "README.md", "LICENSE"],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.ts",
+    "e2e": "node e2e/run.mjs"
+  }
 }

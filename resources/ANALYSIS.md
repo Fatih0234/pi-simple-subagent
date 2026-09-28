@@ -13,7 +13,7 @@ Paths below are relative to that directory. Line numbers are approximate (±2).
 | elpapi42/pi-minimal-subagent | 1.1k | `subagent(agent, task)` | settings.json, else child default | no | `pi --mode json -p` | no |
 | mjakl/pi-subagent (current) | 3.6k | `subagent(calls[])` | **ctx.model** | **yes** (example invites it) | `pi --mode rpc` | no |
 | eggmasonvalue/pi-subagent | 1.5k | `subagent`, `subagent_models` | allowlist default, else child default | **yes, encouraged** (model catalog) | `pi --mode json -p` | no (timeout → resume) |
-| yldgio/pi-background-agents | 0.9k | `background_agent(action enum)` | **ctx.model** (cached, a bug) | yes | in-process `createAgentSession` | yes, **polling** only |
+| yldgio/pi-background-agents | 0.9k | `background_agent(action enum)` | **ctx.model** (captured on first call) | yes | in-process `createAgentSession` | yes, **polling** only |
 | williamcr01/pi-subagents | 3.3k | `spawn_agent`, `check_subagents`, `send_to_subagent`, `cancel_subagent` | settings → **ctx.model** | yes | `pi --mode rpc` | yes: followUp at idle + piggyback on `tool_result` |
 | HazAT/pi-interactive-subagents | 5.0k | `subagent`, `subagent_resume`, … | child default | yes | interactive pi in tmux/cmux pane | yes: `steer` |
 | edxeth/pi-subagents | 25k | `subagent`, `subagent_resume`, `subagent_kill`, … | **ctx.model** (+ thinking) | allowed, but prompt says don't | `pi -p` or mux pane | yes: `steer`/`nextTurn` |
