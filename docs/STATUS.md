@@ -11,6 +11,9 @@ _Last updated: 2026-09-28_
 - **Installed** (2026-09-28): `~/.pi/agent/settings.json` `packages` now points to this folder
   (local path, loaded live, so edits apply on the next pi start). The mjakl fork was removed.
   Backup: `~/.pi/agent/settings.json.bak-before-simple-subagent`.
+- User's setup pins subagents to `simpleSubagent: { model: "github-copilot/gpt-6-luna", thinking: "high" }`
+  (deliberate choice; the setting stays optional in the extension).
+- Live-tested in a real session: parallel spawns, batched busy delivery, `wait_agents`, settings model.
 
 ## Next steps
 1. User tries it in the interactive TUI, especially the idle notice and how results render.
