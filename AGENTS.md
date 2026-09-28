@@ -10,5 +10,6 @@ Read `README.md` (what it is), `docs/MOTIVATION.md` (why), `docs/STATUS.md` (whe
   to `docs/DECISIONS.md` when a decision is made.
 - `resources/repos/` holds third-party reference code (gitignored; `resources/fetch.sh` restores it).
   Read it for ideas; don't copy large chunks, and respect their licenses.
+  A full shallow clone of the pi source for reading is at `resources/repos/earendil-works__pi`.
 - Verify with a real pi session (E2E) first; unit-test only the tricky logic (model resolution,
   delivery de-duplication, output truncation).

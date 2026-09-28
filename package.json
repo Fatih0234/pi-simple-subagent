@@ -26,6 +26,9 @@
   "pi": {
     "extensions": [
       "./index.ts"
+    ],
+    "skills": [
+      "./skills"
     ]
   },
   "files": [
@@ -33,7 +36,8 @@
     "model.ts",
     "runner.ts",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "skills"
   ],
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",

@@ -1,5 +1,5 @@
 # owner/repo  — why it is here
-earendil-works/pi                      official example: packages/coding-agent/examples/extensions/subagent
+earendil-works/pi                      sparse copy of the official subagent example + full shallow clone at earendil-works__pi
 mjakl/pi-subagent                       what we use today (and forked); source of the model-name confusion
 nicobailon/pi-subagents                 most popular; async delegation, artifacts
 tintinweb/pi-subagents                  Claude-Code-like; parallel, live widget, fleet view

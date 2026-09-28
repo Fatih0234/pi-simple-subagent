@@ -7,8 +7,9 @@
 // Uses real model calls (tiny prompts). Children inherit the parent's model, which is
 // deliberately different from settings.json defaultModel so inheritance is observable.
 
-import { spawn } from "node:child_process";
+import { spawn, execSync } from "node:child_process";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
@@ -22,6 +23,14 @@ const artifacts = path.join(root, "e2e", "artifacts");
 fs.mkdirSync(artifacts, { recursive: true });
 const logFile = path.join(artifacts, `run-${new Date().toISOString().replace(/[:.]/g, "-")}.jsonl`);
 const log = fs.createWriteStream(logFile);
+
+// temp git repo + worktree for the cwd scenarios
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pi-simple-subagent-e2e-"));
+const git = (args, cwd = tmp) => execSync(`git ${args}`, { cwd, encoding: "utf-8" }).trim();
+git("init -b main");
+git("-c user.email=e2e@test -c user.name=e2e commit --allow-empty -qm init");
+git(`worktree add -b e2e-cwd ${path.join(tmp, "repo.worktrees", "wt")}`);
+const WT = fs.realpathSync(path.join(tmp, "repo.worktrees", "wt"));
 
 const pi = spawn(
 	"pi",
@@ -112,17 +121,108 @@ try {
 	check("2 idle: result included with next user message", /CHARLIE/.test(a2), a2.slice(0, 80));
 
 	// 3) wait_agents collects the result; no duplicate delivery afterwards
+	// (named agents are not E2E-covered: they would need a fixture in ~/.pi/agent/agents)
 	await prompt(
-		"Use spawn_agent with agent 'scout' and task 'Reply with exactly the word DELTA and nothing else.', then call wait_agents and tell me what it returned.",
+		"Use spawn_agent with task 'Reply with exactly the word DELTA and nothing else.', then call wait_agents and tell me what it returned.",
 	);
 	const a3 = lastAssistant();
 	check("3 wait: wait_agents used", tools("wait_agents").length >= 1);
 	check("3 wait: answer has DELTA", /DELTA/.test(a3), a3.slice(0, 80));
 	check("3 wait: no duplicate result message", resultMsgs().length === 0, `${resultMsgs().length} result messages`);
+
+	// 4) cwd: the child pi process runs in the given worktree
+	await prompt(
+		`Use spawn_agent with cwd '${WT}' and task 'Run the bash commands \`pwd\` and \`git rev-parse --abbrev-ref HEAD\`, then reply with exactly their two output lines and nothing else.'. ` +
+			"Then call wait_agents and repeat its answer verbatim.",
+	);
+	const a4 = lastAssistant();
+	const spawnCwd = tools("spawn_agent").find((e) => e.args?.cwd === WT);
+	check("4 cwd: spawn_agent got cwd", !!spawnCwd, JSON.stringify(tools("spawn_agent").map((e) => e.args)));
+	const waitResult = events
+		.filter((e) => e.type === "tool_execution_end" && e.toolName === "wait_agents")
+		.map((e) => text(e.result))
+		.join("\n");
+	check("4 cwd: header shows cwd", waitResult.includes(`cwd ${WT}`), waitResult.split("\n")[0]);
+	check("4 cwd: child ran in worktree", a4.includes(WT) && a4.includes("e2e-cwd"), a4.slice(0, 160));
+
+	// 5) bad cwd: spawn_agent fails before starting a child
+	await prompt(
+		"Use spawn_agent with cwd '/nonexistent/pi-simple-subagent-e2e' and task 'Reply OK.'. " +
+			"Report the exact error message you got. Do not retry.",
+	);
+	const badSpawn = events.find((e) => e.type === "tool_execution_end" && e.toolName === "spawn_agent");
+	check(
+		"5 bad cwd: spawn_agent errors",
+		!!badSpawn?.isError && /not an existing directory/.test(text(badSpawn.result)),
+		text(badSpawn?.result).slice(0, 120),
+	);
+	check("5 bad cwd: no subagent result", resultMsgs().length === 0 && tools("wait_agents").length === 0);
+
+	// 6) wait_agents without ids returns as soon as the NEXT subagent finishes
+	await prompt(
+		"Use spawn_agent twice in the same turn: first task 'Reply with exactly the word FAST and nothing else.', " +
+			"second task 'Run the bash command `sleep 60`, then reply with exactly the word SLOW and nothing else.'. " +
+			"Then call wait_agents once with no ids. As soon as it returns, reply with the words you have received so far " +
+			"and end your turn. Do not call wait_agents again.",
+	);
+	const spawnId = (kw) => {
+		const start = tools("spawn_agent").find((e) => e.args?.task?.includes(kw));
+		return events.find(
+			(e) => e.type === "tool_execution_end" && e.toolName === "spawn_agent" && e.toolCallId === start?.toolCallId,
+		)?.result?.details?.id;
+	};
+	const fastId = spawnId("FAST");
+	const slowId = spawnId("SLOW");
+	const waitRes6 = text(events.find((e) => e.type === "tool_execution_end" && e.toolName === "wait_agents")?.result);
+	check(
+		"6 next: first wait returns only the finished one",
+		!!fastId && waitRes6.includes(`[${fastId}]`) && waitRes6.includes("FAST") && !waitRes6.includes(`[${slowId}]`),
+		waitRes6.slice(0, 120),
+	);
+	check("6 next: lists the still-running id", !!slowId && waitRes6.includes("Still running:") && waitRes6.includes(slowId), waitRes6.slice(-120));
+	const events6 = events.slice();
+	await until(
+		(e) => e.type === "extension_ui_request" && e.method === "notify" && String(e.message ?? "").includes(slowId),
+		180_000,
+		"idle notify for slow result",
+	);
+	events6.push(...events.slice(events6.length)); // idle-gap events (the nextTurn delivery)
+	await prompt("What word did the other subagent return? Answer with just the word.");
+	events6.push(...events);
+	const a6 = lastAssistant();
+	check("6 next: slow result arrives later", /SLOW/.test(a6), a6.slice(0, 80));
+	const slowDeliveries = events6
+		.filter(
+			(e) =>
+				(e.type === "tool_execution_end" && e.toolName === "wait_agents") ||
+				(e.type === "message_end" && e.message?.customType === "subagent-result"),
+		)
+		.map((e) => text(e.result ?? e.message))
+		.filter((t) => t.includes(`[${slowId}]`));
+	check("6 next: slow result delivered exactly once", slowDeliveries.length === 1, `${slowDeliveries.length} deliveries`);
+
+	// 7) wait_agents with ids still waits for all of them
+	await prompt(
+		"Use spawn_agent twice in the same turn: first task 'Reply with exactly the word ECHO and nothing else.', " +
+			"second task 'Run the bash command `sleep 20`, then reply with exactly the word FOXTROT and nothing else.'. " +
+			"Then call wait_agents once with both ids and repeat both words it returned.",
+	);
+	const waitRes7 = events
+		.filter((e) => e.type === "tool_execution_end" && e.toolName === "wait_agents")
+		.map((e) => text(e.result))
+		.join("\n");
+	const id7a = spawnId("ECHO");
+	const id7b = spawnId("FOXTROT");
+	check(
+		"7 ids: one wait returns both",
+		waitRes7.includes(`[${id7a}]`) && waitRes7.includes(`[${id7b}]`) && /ECHO/.test(waitRes7) && /FOXTROT/.test(waitRes7) && !waitRes7.includes("Still running:"),
+		waitRes7.slice(0, 160),
+	);
 } catch (e) {
 	check("run completed", false, String(e));
 } finally {
 	pi.kill();
+	fs.rmSync(tmp, { recursive: true, force: true });
 	const failed = results.filter((r) => !r.ok).length;
 	fs.writeFileSync(logFile.replace(/\.jsonl$/, ".summary.json"), JSON.stringify({ model, results }, null, 2));
 	console.log(`\n${results.length - failed}/${results.length} passed`);

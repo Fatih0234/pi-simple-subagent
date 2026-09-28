@@ -3,8 +3,8 @@
 **Background subagents for the [pi coding agent](https://github.com/earendil-works/pi): two tools, no model guessing, no polling.**
 
 ```
-spawn_agent({ task, agent? })   → starts in the background, returns an id immediately
-wait_agents({ ids? })           → blocks only when you actually need the results
+spawn_agent({ task, agent?, cwd? })   → starts in the background, returns an id immediately
+wait_agents({ ids? })           → returns the next finished results (or all of the given ids)
 ```
 
 Your main agent hands off work, **keeps working**, and results show up in the conversation
@@ -38,7 +38,7 @@ pi-simple-subagent does one thing: **multiply your agent**. It fans work out in 
 | 🚀 **Background by default** | `spawn_agent` returns instantly. Start 5 tasks, keep editing code, and results arrive automatically. |
 | 🔕 **No polling, no surprise turns** | Main agent busy → results are slipped into its current run. Main agent idle → it is **not** woken up (no unrequested spend). Results wait for your next message, with a UI notice. |
 | 💸 **Cost-aware delivery** | Results that finish while the agent is busy go in as **one** message, not one per result. Pi takes in one queued message per turn, so batching saves a model call per extra result. Every result shows model, duration, turns and cost. |
-| 🧩 **Tiny schema** | 2 tools, 3 parameters in total. Easy for any model to use on the first try. |
+| 🧩 **Tiny schema** | 2 tools, 4 parameters in total. Easy for any model to use on the first try. |
 | 🧱 **Process isolation** | Each subagent is a separate `pi` process. A crash can't take down your session. Children can't spawn children. |
 | 📖 **Readable** | ~600 lines, 3 source files. Read the whole thing in 15 minutes. |
 | ✅ **Tested against real pi** | An E2E driver runs a real pi in RPC mode and checks each delivery path, batching, and which model ran. |
@@ -51,9 +51,9 @@ pi-simple-subagent does one thing: **multiply your agent**. It fans work out in 
 | Results arrive without polling | n/a | varies | ✅ |
 | LLM can pick or guess models | often | often | **never** |
 | Silent model fallback | sometimes | sometimes | **never** |
-| Tool parameters | 2–15 | 15–80+ | **3** |
+| Tool parameters | 2–15 | 15–80+ | **4** |
 | Code size | 0.2k–4k lines | 14k–105k lines | **~0.6k lines** |
-| Worktrees / tmux / workflows | – | ✅ | intentionally no |
+| Worktrees / tmux / workflows | – | ✅ | worktrees via skill, rest intentionally no |
 
 ## Usage
 
@@ -77,7 +77,9 @@ bash("npm test") ... edit(...) ...        ← main agent keeps working
 ...
 ```
 
-If the agent can't go on without results, it calls `wait_agents()`.
+If the agent can't go on without results, it calls `wait_agents()`: without ids it returns
+as soon as the next subagent finishes (with everything finished by then, and a note about
+what is still running); with ids it waits for all of them.
 
 ### Named agents (optional)
 
@@ -94,6 +96,17 @@ You are a scout. Investigate quickly and return a compact summary...
 ```
 
 Leave out `agent` to get a general-purpose subagent with pi's default tools.
+
+### Parallel worktrees (skill)
+
+`/skill:parallel-worktrees <tasks>` turns the main agent into a coordinator. It creates one
+worktree and an `agent/<slug>` branch per task, writes a task file in git's per-worktree
+directory (`git rev-parse --git-path pi-task.md`, never committed and removed with the
+worktree), spawns one worker per worktree with `cwd`, reviews each diff and reruns its
+check, then pushes and opens PRs itself after review. Workers only commit.
+
+The skill is user-invoked (`disable-model-invocation`), so it never enters the model's
+context unless you type it.
 
 ## Model selection
 
@@ -117,7 +130,7 @@ Fuzzy names like `"sonnet"` are rejected, so pi can't match them to a model you 
 |---|---|
 | busy (streaming or running tools) | results are buffered and injected as one message at the end of the turn, so the next model request sees them |
 | idle (waiting for you) | not woken. Results are attached to your next message, and a notice is shown |
-| blocked in `wait_agents` | `wait_agents` returns them; no duplicate message |
+| blocked in `wait_agents` | returns the next finished result(s), or all of the given ids; the rest keep flowing; no duplicate messages |
 
 Up to 8 subagents run at once; more queue automatically. Full outputs are saved to
 `~/.pi/agent/simple-subagent/results/`, and long results are truncated with a pointer to that file.
@@ -127,7 +140,7 @@ Running subagents are stopped when the pi session ends.
 
 These are deliberate. Your agent can already do them with bash, or other extensions do them well:
 
-- git worktrees, sandboxes, dev servers
+- creating or managing git worktrees (the extension only passes a `cwd` to the child; the `parallel-worktrees` skill drives git), sandboxes, dev servers
 - tmux/terminal panes, interactive child sessions
 - chains, workflows, DAGs, verifier fan-out
 - persistent or resumable subagent sessions
@@ -146,9 +159,11 @@ Tip: uninstall other subagent extensions so the agent doesn't see two competing 
 ## Development
 
 ```bash
-npm test               # model-selection unit tests (node --test, no install needed)
-node e2e/run.mjs       # real pi in RPC mode: busy/idle/wait delivery, batching, model choice
-                       # (makes a few tiny model calls, writes logs to e2e/artifacts/)
+npm test                          # model-selection unit tests (node --test, no install needed)
+node e2e/run.mjs                  # real pi in RPC mode: busy/idle/wait delivery, batching,
+                                  # model choice, cwd (makes a few tiny model calls)
+node e2e/worktrees.mjs <model>    # skill E2E: real worktrees + workers on a toy repo
+                                  # (writes logs to e2e/artifacts/)
 ```
 
 | Path | |
@@ -156,6 +171,7 @@ node e2e/run.mjs       # real pi in RPC mode: busy/idle/wait delivery, batching,
 | `index.ts` | tools, run queue, delivery |
 | `runner.ts` | child `pi` process |
 | `model.ts` | model selection (pure) |
+| `skills/parallel-worktrees` | user-invoked skill: one worktree + worker per task |
 | `docs/DESIGN.md` · `docs/DECISIONS.md` | design and decision log |
 | `resources/ANALYSIS.md` | comparison of 14 existing pi subagent extensions |
 

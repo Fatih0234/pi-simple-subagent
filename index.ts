@@ -1,8 +1,8 @@
 /**
  * pi-simple-subagent — background subagents for pi.
  *
- *   spawn_agent({ task, agent? })  start a child pi process, return its id immediately
- *   wait_agents({ ids? })          block until children finish, return their results
+ *   spawn_agent({ task, agent?, cwd? })  start a child pi process, return its id immediately
+ *   wait_agents({ ids? })          return the next finished results (or all of the given ids)
  *
  * Results that nobody waits for are delivered automatically:
  *   main agent busy -> slipped into the current run (deliverAs "steer")
@@ -88,6 +88,7 @@ interface Run {
 	id: string;
 	agent: string; // "general" when none given
 	task: string;
+	cwd?: string; // set only when the caller passed cwd (resolved)
 	model: string;
 	status: Status;
 	startedAt?: number;
@@ -113,7 +114,7 @@ function formatResult(r: Run): string {
 	const res = r.result;
 	const took = r.startedAt && r.endedAt ? fmtDuration(r.endedAt - r.startedAt) : "-";
 	const cost = res?.cost ? `, $${res.cost.toFixed(4)}` : "";
-	const header = `[${r.id}] ${r.status} — agent ${r.agent}, model ${res?.model ?? r.model}, ${took}, ${res?.turns ?? 0} turns${cost}`;
+	const header = `[${r.id}] ${r.status} — agent ${r.agent}, model ${res?.model ?? r.model}${r.cwd ? `, cwd ${r.cwd}` : ""}, ${took}, ${res?.turns ?? 0} turns${cost}`;
 	let body = r.status === "stopped" ? "(stopped before finishing)" : (res?.output ?? "");
 	if (body.length > MAX_RESULT_CHARS) {
 		body = `${body.slice(0, MAX_RESULT_CHARS)}\n\n[truncated — full output: ${r.resultFile}]`;
@@ -210,7 +211,10 @@ export default function (pi: ExtensionAPI) {
 			try {
 				fs.mkdirSync(RESULTS_DIR, { recursive: true });
 				r.resultFile = path.join(RESULTS_DIR, `${Date.now()}-${r.id}.md`);
-				fs.writeFileSync(r.resultFile, `# ${r.id}\n\n## Task\n\n${r.task}\n\n## Result\n\n${r.result.output}\n`);
+				fs.writeFileSync(
+					r.resultFile,
+					`# ${r.id}${r.cwd ? `\ncwd: ${r.cwd}` : ""}\n\n## Task\n\n${r.task}\n\n## Result\n\n${r.result.output}\n`,
+				);
 			} catch {
 				r.resultFile = undefined;
 			}
@@ -237,9 +241,19 @@ export default function (pi: ExtensionAPI) {
 		parameters: Type.Object({
 			task: Type.String({ description: "Complete, self-contained instructions for the subagent." }),
 			agent: Type.Optional(Type.String({ description: agentHelp })),
+			cwd: Type.Optional(
+				Type.String({
+					description:
+						"Working directory for the subagent, such as a git worktree you created. Absolute, or relative to your cwd. Defaults to your cwd.",
+				}),
+			),
 		}),
 		async execute(_id, params, _signal, _onUpdate, c) {
 			ctx = c;
+			const cwd = params.cwd ? path.resolve(c.cwd, params.cwd) : undefined;
+			if (cwd && !fs.statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) {
+				throw new Error(`cwd ${cwd} is not an existing directory.`);
+			}
 			const agents = loadAgents();
 			const def = params.agent ? agents.find((a) => a.name === params.agent) : undefined;
 			if (params.agent && !def) {
@@ -277,6 +291,7 @@ export default function (pi: ExtensionAPI) {
 				id,
 				agent: def?.name ?? "general",
 				task: params.task,
+				cwd,
 				model: choice.model,
 				status: "queued",
 				delivered: false,
@@ -294,7 +309,7 @@ export default function (pi: ExtensionAPI) {
 					try {
 						run.child = runChild({
 							task: params.task,
-							cwd: c.cwd,
+							cwd: run.cwd ?? c.cwd,
 							model: choice.model,
 							thinking: choice.thinking,
 							tools: def?.tools,
@@ -324,10 +339,10 @@ export default function (pi: ExtensionAPI) {
 				content: [
 					{
 						type: "text",
-						text: `${id} ${where} in background with model ${choice.model} (${choice.source}). Its result will be delivered to you automatically.`,
+						text: `${id} ${where} in background${run.cwd ? ` in ${run.cwd}` : ""} with model ${choice.model} (${choice.source}). Its result will be delivered to you automatically.`,
 					},
 				],
-				details: { id, model: choice.model, source: choice.source },
+				details: { id, model: choice.model, source: choice.source, cwd: run.cwd },
 			};
 		},
 	});
@@ -336,11 +351,15 @@ export default function (pi: ExtensionAPI) {
 		name: "wait_agents",
 		label: "Wait for agents",
 		description:
-			"Block until background subagents finish and return their results. Use only when you cannot continue without them. " +
-			"Omit ids to wait for every subagent whose result you have not received yet.",
-		promptSnippet: "wait_agents: block until background subagents finish and get their results",
+			"Wait for background subagents and return their results. Use only when you cannot continue without them. " +
+			"Without ids: returns as soon as at least one subagent whose result you have not received finishes, with every result finished by then; " +
+			"the others keep running and arrive automatically, or call wait_agents again. " +
+			"With ids: blocks until all of those finish.",
+		promptSnippet: "wait_agents: wait for the next background subagent results (or all of specific ids)",
 		parameters: Type.Object({
-			ids: Type.Optional(Type.Array(Type.String(), { description: "Subagent ids from spawn_agent." })),
+			ids: Type.Optional(
+				Type.Array(Type.String(), { description: "Subagent ids from spawn_agent. Blocks until all of them finish." }),
+			),
 		}),
 		async execute(_id, params, signal, onUpdate, c) {
 			ctx = c;
@@ -372,7 +391,9 @@ export default function (pi: ExtensionAPI) {
 			let aborted = false;
 			try {
 				await new Promise<void>((resolve) => {
-					Promise.all(targets.map((r) => r.finished)).then(() => resolve());
+					// no ids: return as soon as the next target finishes; ids: wait for all of them
+					const finishes = targets.map((r) => r.finished);
+					(params.ids?.length ? Promise.all(finishes) : Promise.race(finishes)).then(() => resolve());
 					const onAbort = () => ((aborted = true), resolve());
 					if (signal?.aborted) onAbort();
 					else signal?.addEventListener("abort", onAbort, { once: true });
@@ -388,11 +409,17 @@ export default function (pi: ExtensionAPI) {
 				throw new Error("wait_agents aborted; subagents keep running and deliver their results automatically.");
 			}
 
-			const parts = targets.map((r) => {
+			const parts = targets.filter(isFinished).map((r) => {
 				if (r.delivered) return `[${r.id}] ${r.status} — result was already delivered to you earlier.`;
 				r.delivered = true;
 				return formatResult(r);
 			});
+			const stillRunning = targets.filter((r) => !isFinished(r));
+			if (stillRunning.length) {
+				parts.push(
+					`Still running: ${stillRunning.map((r) => r.id).join(", ")}. Their results are delivered to you automatically while you keep working; call wait_agents again when you run out of work.`,
+				);
+			}
 			return { content: [{ type: "text", text: parts.join("\n\n---\n\n") }], details: undefined };
 		},
 	});

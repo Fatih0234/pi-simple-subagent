@@ -30,3 +30,12 @@ Append-only. Newest at the bottom. Format: date — decision — why.
 - 2026-09-28 — Fixed three delivery bugs found by a live `reviewer` subagent: idle-gap results stuck in the
   steer buffer (now polled until idle), a failure at child start left runs stuck at "running", and stale
   `wait_agents` progress updates after an abort.
+- 2026-09-28: `spawn_agent` takes an optional `cwd`, reversing "no cwd". Why: the pi process
+  cwd drives the system prompt cwd, relative paths, each bash call's directory, AGENTS.md
+  discovery, and project config/trust, so a worker that stays in the main checkout with
+  absolute paths edits the wrong checkout on the first relative path. It passes the design
+  test because the model knows the path it just created; a model name must be guessed.
+- 2026-09-28: worktree orchestration ships as a user-invoked skill in this package, not as
+  tools, with no prompt template. Task state lives at `git rev-parse --git-path pi-task.md`.
+  Workers commit; the coordinator reviews, pushes and opens PRs.
+- 2026-09-28: wait_agents without ids returns as soon as the next subagent finishes, with every result finished by then, and lists the ones still running; with ids it still waits for all of them. Why: waiting for all held early results until the slowest worker finished, so a coordinator could not review or start a fix round for a fast worker while a slow one ran. No new parameter: the others keep flowing through normal delivery, and a caller that needs a specific set passes ids. Cost: a caller that needs every result may call wait_agents more than once.

@@ -7,6 +7,7 @@ grep -v '^#' repos.txt | awk 'NF{print $1}' | while read -r r; do
   if [ "$r" = "earendil-works/pi" ]; then
     d=repos/earendil-works__pi-official-subagent
     [ -d "$d" ] || { tmp=$(mktemp -d); git clone -q --depth 1 --filter=blob:none --sparse https://github.com/$r "$tmp" && (cd "$tmp" && git sparse-checkout set packages/coding-agent/examples/extensions/subagent) && mkdir -p "$d" && cp -r "$tmp"/packages/coding-agent/examples/extensions/subagent/* "$d"/; rm -rf "$tmp"; }
+    [ -d repos/earendil-works__pi ] || git clone -q --depth 1 "https://github.com/$r" repos/earendil-works__pi
     continue
   fi
   d=repos/${r//\//__}
