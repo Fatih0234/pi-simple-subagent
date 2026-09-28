@@ -1,7 +1,28 @@
 # pi-simple-subagent
 
 A from-scratch subagent extension for the [pi coding agent](https://github.com/earendil-works/pi).
-**Status: design / brainstorming. No code yet.** See `docs/STATUS.md`.
+**Status: v0.1 prototype, E2E-tested.** See `docs/STATUS.md`.
+
+## Usage (for the agent)
+
+```
+spawn_agent({ task, agent? })   start in background, returns id immediately
+wait_agents({ ids? })           block until they finish (only when you can't continue without them)
+```
+
+Results arrive automatically: slipped into the current run if the main agent is busy,
+or held for your next message if it's idle.
+
+## Install / config
+
+```jsonc
+// ~/.pi/agent/settings.json
+"packages": ["/home/karahanf/projects/pi-simple-subagent"],
+// optional: pin a subagent model (otherwise the main session's current model is used)
+"simpleSubagent": { "model": "provider/id", "thinking": "medium" }
+```
+
+A per-agent `model:` in `~/.pi/agent/agents/<name>.md` frontmatter wins over both.
 
 ## Why this exists
 
@@ -57,3 +78,5 @@ It works, but it caused real problems in day-to-day use:
 | `resources/ANALYSIS.md` | Comparison of 14 existing pi subagent extensions |
 | `resources/repos.txt` | The reference repos and why each one is here |
 | `resources/fetch.sh` | Re-clones the references into `resources/repos/` (gitignored) |
+| `index.ts`, `runner.ts`, `model.ts` | The extension |
+| `test/`, `e2e/run.mjs` | Unit tests (model choice) and the real-pi E2E driver |

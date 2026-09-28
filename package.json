@@ -1,0 +1,11 @@
+{
+  "name": "pi-simple-subagent",
+  "version": "0.1.0",
+  "description": "Simple background subagents for the pi coding agent: spawn_agent + wait_agents. The LLM never picks the model.",
+  "type": "module",
+  "keywords": ["pi-package", "pi", "subagent"],
+  "license": "MIT",
+  "pi": { "extensions": ["./index.ts"] },
+  "files": ["index.ts", "model.ts", "runner.ts", "README.md"],
+  "scripts": { "test": "node --test test/*.test.ts" }
+}
